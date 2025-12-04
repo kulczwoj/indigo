@@ -107,29 +107,21 @@ else
 			EXCLUDED_DRIVERS += ccd_playerone
 		endif
 		ifeq ($(ARCH_DETECTED),x86_64)
-			ifneq ($(wildcard /lib/x86_64-linux-gnu/),)
-				ARCH_DETECTED = x64
-				DEBIAN_ARCH = amd64
-			else ifneq ($(wildcard /lib64/),)
-				ARCH_DETECTED = x64
-				DEBIAN_ARCH = amd64
-			else
-				ARCH_DETECTED = x86
-				DEBIAN_ARCH = i386
-			endif
+			ARCH_DETECTED = x64
+			DEBIAN_ARCH = amd64
 		endif
 		CC = gcc
 		AR = ar
 		INDIGO_CUDA = $(wildcard /usr/local/cuda)
 		ifeq ($(INDIGO_CUDA),)
 			CUDA_BUILD = ""
-			LDFLAGS = -lm -lrt -lusb-1.0 -pthread -L$(BUILD_LIB) -Wl,-rpath=\\\$$\$$ORIGIN/../lib,-rpath=\\\$$\$$ORIGIN/../drivers,-rpath=.
+			LDFLAGS = -lm -lrt -lusb-1.0 -ludev -pthread -L$(BUILD_LIB) -Wl,-rpath=\\\$$\$$ORIGIN/../lib,-rpath=\\\$$\$$ORIGIN/../drivers,-rpath=.
 		else
 			NVCC = $(INDIGO_CUDA)/bin/nvcc
 			CUDA_LIBS = $(addprefix -L,$(wildcard $(INDIGO_CUDA)/lib*))
 			CUDA_BUILD = "-DINDIGO_CUDA"
 			NVCCFLAGS = $(DEBUG_BUILD) -Xcompiler -fPIC -O3 -isystem $(INDIGO_CUDA)/include -isystem $(INDIGO_ROOT)/indigo_libs -I $(INDIGO_ROOT)/indigo_drivers -I $(INDIGO_ROOT)/indigo_linux_drivers -I $(BUILD_INCLUDE) -std=c++11 -DINDIGO_LINUX
-			LDFLAGS = -lm -lrt -lusb-1.0 -pthread -lcudart $(CUDA_LIBS) -L$(BUILD_LIB) -Wl,-rpath=\\\$$\$$ORIGIN/../lib,-rpath=\\\$$\$$ORIGIN/../drivers,-rpath=.
+			LDFLAGS = -lm -lrt -lusb-1.0 -ludev -pthread -lcudart $(CUDA_LIBS) -L$(BUILD_LIB) -Wl,-rpath=\\\$$\$$ORIGIN/../lib,-rpath=\\\$$\$$ORIGIN/../drivers,-rpath=.
 		endif
 		ifeq ($(ARCH_DETECTED),arm)
 			CFLAGS = $(DEBUG_BUILD) $(CUDA_BUILD) -fPIC -O3 -march=armv6 -mfpu=vfp -mfloat-abi=hard -marm -mthumb-interwork -I$(INDIGO_ROOT)/indigo_libs -I$(INDIGO_ROOT)/indigo_drivers -I$(INDIGO_ROOT)/indigo_linux_drivers -I$(BUILD_INCLUDE) -std=gnu11 -pthread -DINDIGO_LINUX $(DRPI_MANAGEMENT) -D_FILE_OFFSET_BITS=64
@@ -187,23 +179,19 @@ reconfigure:
 	install -d -m 0755 $(INSTALL_FIRMWARE)
 
 install: reconfigure init all
-	@sudo $(MAKE)	-C indigo_libs install
-	@sudo $(MAKE)	-C indigo_tools install
-	@sudo $(MAKE)	-C indigo_drivers -f ../Makefile.drvs install
+	@$(MAKE)	-C indigo_libs install
+	@$(MAKE)	-C indigo_tools install
+	@$(MAKE)	-C indigo_drivers -f ../Makefile.drvs install
 ifeq ($(OS_DETECTED),Darwin)
-	@sudo $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs install
+	@$(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs install
 endif
 ifeq ($(OS_DETECTED),Linux)
-	@sudo $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs install
+	@$(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs install
 endif
-	@sudo $(MAKE)	-C indigo_server install
+	@$(MAKE)	-C indigo_server install
 ifeq ($(OS_DETECTED),Linux)
-	sudo udevadm control --reload-rules
 	@$(MAKE)	    -C tools/fxload -f Makefile
-	@sudo install -d /sbin
-	@sudo install -d /usr/sbin
-	@sudo install -m 0755 tools/fxload/fxload /sbin
-	@sudo install -m 0755 tools/fxload/fxload /usr/sbin
+	@install -m 0755 tools/fxload/fxload $(INSTALL_ROOT)/bin
 endif
 
 indigo-environment-install:
@@ -213,18 +201,18 @@ indigo-environment-install:
 	systemctl start indigo-environment
 
 uninstall: reconfigure init
-	@sudo $(MAKE)	-C indigo_libs uninstall
-	@sudo $(MAKE)	-C indigo_tools uninstall
-	@sudo $(MAKE)	-C indigo_drivers -f ../Makefile.drvs uninstall
+	@$(MAKE)	-C indigo_libs uninstall
+	@$(MAKE)	-C indigo_tools uninstall
+	@$(MAKE)	-C indigo_drivers -f ../Makefile.drvs uninstall
 ifeq ($(OS_DETECTED),Darwin)
-	@sudo $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs uninstall
+	@$(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs uninstall
 endif
 ifeq ($(OS_DETECTED),Linux)
-	@sudo $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs uninstall
+	@$(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs uninstall
 endif
-	@sudo $(MAKE)	-C indigo_server uninstall
+	@$(MAKE)	-C indigo_server uninstall
 ifeq ($(OS_DETECTED),Linux)
-	sudo udevadm control --reload-rules
+	udevadm control --reload-rules
 endif
 
 ifeq ($(OS_DETECTED),Linux)
@@ -386,13 +374,13 @@ Makefile.inc: Makefile
 	@echo ---------------------------------------------------------------------
 
 debs-remote:
-	ssh ubuntu32.local "cd indigo; git reset --hard; git pull; make clean-all; make; sudo make package"
+	ssh ubuntu32.local "cd indigo; git reset --hard; git pull; make clean-all; make; make package"
 	scp ubuntu32.local:indigo/indigo-$(INDIGO_VERSION)-$(INDIGO_BUILD)-i386.deb .
-	ssh ubuntu64.local "cd indigo; git reset --hard; git pull; make clean-all; make; sudo make package"
+	ssh ubuntu64.local "cd indigo; git reset --hard; git pull; make clean-all; make; make package"
 	scp ubuntu64.local:indigo/indigo-$(INDIGO_VERSION)-$(INDIGO_BUILD)-amd64.deb .
-	ssh raspi32.local "cd indigo; git reset --hard; git pull; make clean-all; make; sudo make package"
+	ssh raspi32.local "cd indigo; git reset --hard; git pull; make clean-all; make; make package"
 	scp raspi32.local:indigo/indigo-$(INDIGO_VERSION)-$(INDIGO_BUILD)-armhf.deb .
-	ssh raspi64.local "cd indigo; git reset --hard; git pull; make clean-all; make; sudo make package"
+	ssh raspi64.local "cd indigo; git reset --hard; git pull; make clean-all; make; make package"
 	scp raspi64.local:indigo/indigo-$(INDIGO_VERSION)-$(INDIGO_BUILD)-arm64.deb .
 
 debs-docker:

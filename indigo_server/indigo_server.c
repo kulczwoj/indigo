@@ -1757,8 +1757,7 @@ static void server_main() {
 			strcat(path, "/../share/indigo");
 			add_drivers(path);
 		}
-		add_drivers("/usr/share/indigo");
-		add_drivers("/usr/local/share/indigo");
+		add_drivers("/nix/store/cqmckbvcr06p6ka8bayh930fiqlbdzvy-fix-drivers-path.patch/share/indigo");
 	}
 	indigo_attach_device(&server_device);
 
