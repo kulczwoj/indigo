@@ -1,19 +1,51 @@
 # Changelog
 
 All notable changes to INDIGO framework will be documented in this file.
+# [2.0-354] - 20 Dec Sat 2025
+## Overall:
+
+## New Drivers:
+- indigo_ccd_baccam:
+	- Baccam (Touptek OEM) camera driver added
+
+- indigo_ccd_meade:
+	- Meade (Touptek OEM) camera driver added
+
+
+## Driver Fixes:
+- indigo_agent_imager:
+	- add AGENT_IMAGER_DISK_USAGE
+
+- indigo_ccd_touptek & OEM:
+	- updated SDK v.59.30239.20251209
+
+- indigo_ccd_ptp:
+	- support Canon EOS R1 and R5 Mark II
+	- fixed an issue where shooting in RAM mode on older Canon cameras would not complete
+
+
+# [2.0-352] - 12 Dec Fri 2025
+## Overall:
+- indigo_ccd_driver:
+	- added new more robust placeholder for frame numbering %nI
+	- more permissive filename sanitization
+
+- indigo_docs:
+	- CCD_DRIVER_SAVED_IMAGES.md: document %nI placeholder
+
 # [2.0-350] - 27 Nov Thu 2025
 ## Driver Fixes:
-	- indigo_wheel_playerone:
-		- Updated to SDK v1.2.3
+- indigo_wheel_playerone:
+	- Updated to SDK v1.2.3
 
-	- indigo_wheel_asi:
-		- Updated to SDK v.1.8.4
+- indigo_wheel_asi:
+	- Updated to SDK v.1.8.4
 
-	- indigo_focuser_asi:
-		- Updated to SDK v.1.7.7
+- indigo_focuser_asi:
+	- Updated to SDK v.1.7.7
 
-	- indigo_rotator_asi:
-		- Updated to SDK v.1.5.9
+- indigo_rotator_asi:
+	- Updated to SDK v.1.5.9
 
 # [2.0-348] - 21 Nov Fri 2025
 ## Overall:
