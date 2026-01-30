@@ -44,6 +44,8 @@
 #define TEXT_LEN_TO_PRINT 80
 #define MAX_ITEMS 128
 
+#define ANY_STATE -2
+
 //#define DEBUG
 
 static bool set_requested = false;
@@ -54,6 +56,10 @@ static bool get_state_requested = false;
 static bool print_verbose = false;
 static bool save_blobs = false;
 static bool discover_requested = false;
+static bool wait_state_requested = false;
+static int wait_for_state = -1; /* use INDIGO_*_STATE */
+static volatile bool poll_wait_flag = true; /* polled every 100ms during waits */
+static bool track_states = false;
 
 typedef struct {
 	int item_count;
@@ -80,6 +86,11 @@ static property_change_request change_request;
 static property_list_request list_request;
 static property_get_request get_request;
 
+void stop_waiting_if_requested(indigo_property_state property_state) {
+	if (wait_state_requested && (wait_for_state == ANY_STATE || property_state == wait_for_state)) {
+		poll_wait_flag = false;
+	}
+}
 
 int read_file(const char *file_name, char **file_data) {
 	int size = 0;
@@ -290,6 +301,23 @@ static void save_blob(char *filename, char *data, size_t length) {
 void print_property_list(indigo_property *property, const char *message) {
 	indigo_item *item;
 	int i;
+
+	char state_str[20] = "";
+	switch(property->state) {
+	case INDIGO_IDLE_STATE:
+		strcpy(state_str, "IDLE");
+		break;
+	case INDIGO_ALERT_STATE:
+		strcpy(state_str, "ALERT");
+		break;
+	case INDIGO_OK_STATE:
+		strcpy(state_str, "OK");
+		break;
+	case INDIGO_BUSY_STATE:
+		strcpy(state_str, "BUSY");
+		break;
+	}
+
 	if (print_verbose) {
 		char perm_str[3] = "";
 		switch(property->perm) {
@@ -323,22 +351,6 @@ void print_property_list(indigo_property *property, const char *message) {
 			break;
 		}
 
-		char state_str[20] = "";
-		switch(property->state) {
-		case INDIGO_IDLE_STATE:
-			strcpy(state_str, "IDLE");
-			break;
-		case INDIGO_ALERT_STATE:
-			strcpy(state_str, "ALERT");
-			break;
-		case INDIGO_OK_STATE:
-			strcpy(state_str, "OK");
-			break;
-		case INDIGO_BUSY_STATE:
-			strcpy(state_str, "BUSY");
-			break;
-		}
-
 		printf("Name : %s.%s (%s, %s)\nState: %s\nGroup: %s\nLabel: %s\n", property->device, property->name, perm_str, type_str, state_str, property->group, property->label);
 		if (message) {
 			printf("Message:\"%s\"\n", message);
@@ -348,6 +360,9 @@ void print_property_list(indigo_property *property, const char *message) {
 
 	for (i = 0; i < property->count; i++) {
 		item = &(property->items[i]);
+		if (!print_verbose && track_states) {
+			printf("[%s]\t", state_str);
+		}
 		switch (property->type) {
 		case INDIGO_TEXT_VECTOR:
 			if (item->text.length > TEXT_LEN_TO_PRINT) {
@@ -357,7 +372,11 @@ void print_property_list(indigo_property *property, const char *message) {
 			}
 			break;
 		case INDIGO_NUMBER_VECTOR:
-			printf("%s.%s.%s = %f\n", property->device, property->name, item->name, item->number.value);
+			if (print_verbose) {
+				printf("%s.%s.%s = %f [%f, %f]\n", property->device, property->name, item->name, item->number.value, item->number.min, item->number.max);
+			} else {
+				printf("%s.%s.%s = %g\n", property->device, property->name, item->name, item->number.value);
+			}
 			break;
 		case INDIGO_SWITCH_VECTOR:
 			printf("%s.%s.%s = %s\n", property->device, property->name, item->name, item->sw.value ? "ON" : "OFF");
@@ -372,10 +391,10 @@ void print_property_list(indigo_property *property, const char *message) {
 				printf("%s.%s.%s = <BLOB => %s>\n", property->device, property->name, item->name, filename);
 				save_blob(filename, item->blob.value, item->blob.size);
 			} else if ((save_blobs) && (indigo_use_blob_urls) && (item->blob.url[0] != '\0') && (property->state == INDIGO_OK_STATE)) {
+				char filename[PATH_MAX];
+				snprintf(filename, PATH_MAX, "%s.%s.%s%s", property->device, property->name, item->name, item->blob.format);
+				printf("%s.%s.%s = <%s => %s>\n", property->device, property->name, item->name, item->blob.url, filename);
 				if (indigo_populate_http_blob_item(item)) {
-					char filename[PATH_MAX];
-					snprintf(filename, PATH_MAX, "%s.%s.%s%s", property->device, property->name, item->name, item->blob.format);
-					printf("%s.%s.%s = <%s => %s>\n", property->device, property->name, item->name, item->blob.url, filename);
 					save_blob(filename, item->blob.value, item->blob.size);
 					free(item->blob.value);
 					item->blob.value = NULL;
@@ -411,6 +430,7 @@ static void print_property_list_filtered(indigo_property *property, const char *
 		if ((!strncmp(filter->device_name, property->device, INDIGO_NAME_SIZE)) &&
 		   (!strncmp(filter->property_name, property->name, INDIGO_NAME_SIZE))) {
 			print_property_list(property, message);
+			stop_waiting_if_requested(property->state);
 		}
 	}
 }
@@ -442,7 +462,11 @@ static void print_property_get_filtered(indigo_property *property, const char *m
 				}
 				break;
 			case INDIGO_NUMBER_VECTOR:
-				sprintf(value_string[items_found], "%f", item->number.value);
+				if (print_verbose) {
+					sprintf(value_string[items_found], "%f [%f, %f]", item->number.value, item->number.min, item->number.max);
+				} else {
+					sprintf(value_string[items_found], "%g", item->number.value);
+				}
 				break;
 			case INDIGO_SWITCH_VECTOR:
 				sprintf(value_string[items_found], item->sw.value ? "ON" : "OFF");
@@ -486,6 +510,7 @@ static void print_property_get_filtered(indigo_property *property, const char *m
 	for (i = 0; i < items_found; i++) {
 		printf("%s\n", value_string[i]);
 	}
+	stop_waiting_if_requested(property->state);
 }
 
 
@@ -565,6 +590,7 @@ static void print_property_list_state_filtered(indigo_property *property, const 
 		if ((!strncmp(filter->device_name, property->device, INDIGO_NAME_SIZE)) &&
 		   (!strncmp(filter->property_name, property->name, INDIGO_NAME_SIZE))) {
 			print_property_list_state(property, message);
+			stop_waiting_if_requested(property->state);
 		}
 	}
 }
@@ -597,6 +623,7 @@ static void print_property_get_state_filtered(indigo_property *property, const c
 		if ((!strncmp(filter->device_name, property->device, INDIGO_NAME_SIZE)) &&
 		   (!strncmp(filter->property_name, property->name, INDIGO_NAME_SIZE))) {
 			print_property_get_state(property, message);
+			stop_waiting_if_requested(property->state);
 		}
 	}
 }
@@ -614,7 +641,7 @@ static indigo_result client_define_property(indigo_client *client, indigo_device
 	int r;
 	static bool called = false;
 
-	if (!called && print_verbose) {
+	if (!called && print_verbose && !(get_requested || get_state_requested)) {
 		printf("Protocol version = %x.%x\n\n", property->version >> 8, property->version & 0xff);
 		called = true;
 	}
@@ -749,6 +776,20 @@ static indigo_result client_define_property(indigo_client *client, indigo_device
 
 
 static indigo_result client_update_property(indigo_client *client, indigo_device *device, indigo_property *property, const char *message) {
+	/* If waiting for specific state after a set, exit as soon as the target state is observed */
+	if (poll_wait_flag == false) {
+		return INDIGO_OK;
+	}
+	if (wait_state_requested) {
+		if (!strcmp(property->device, change_request.device_name) && !strcmp(property->name, change_request.property_name)) {
+			if (wait_for_state == ANY_STATE || property->state == wait_for_state) {
+				print_property_list(property, message);
+				poll_wait_flag = false;
+				return INDIGO_OK;
+			}
+		}
+	}
+
 	if (set_requested) {
 		print_property_list(property, message);
 	} else if (get_requested) {
@@ -829,6 +870,8 @@ static void print_help(const char *name) {
 	       "       -p  | --port port                   (default: 7624)\n"
 	       "       -T  | --token token\n"
 	       "       -t  | --time-to-wait seconds        (default: 2)\n"
+	       "       -w  | --wait OK|BUSY|ALERT|IDLE|ANY wait for property state (ANY=any update)\n"
+	       "       -s  | --track-states                print property state as string\n"
 	);
 }
 
@@ -925,6 +968,31 @@ int main(int argc, const char * argv[]) {
 				fprintf(stderr, "No time to wait specified\n");
 				return 1;
 			}
+		} else if (!strcmp(argv[i], "-w") || !strcmp(argv[i], "--wait")) {
+			if (argc > i+1) {
+				i++;
+				if (!strcmp(argv[i], "OK")) {
+					wait_for_state = INDIGO_OK_STATE;
+				} else if (!strcmp(argv[i], "BUSY")) {
+					wait_for_state = INDIGO_BUSY_STATE;
+				} else if (!strcmp(argv[i], "ALERT")) {
+					wait_for_state = INDIGO_ALERT_STATE;
+				} else if (!strcmp(argv[i], "IDLE")) {
+					wait_for_state = INDIGO_IDLE_STATE;
+				} else if (!strcasecmp(argv[i], "ANY")) {
+					wait_for_state = ANY_STATE;
+				} else {
+					fprintf(stderr, "Invalid wait state specified: %s\n", argv[i]);
+					return 1;
+				}
+			} else {
+				fprintf(stderr, "No wait state specified\n");
+				return 1;
+			}
+			poll_wait_flag = true;
+			wait_state_requested = true;
+		} else if (!strcmp(argv[i], "-s") || !strcmp(argv[i], "--track-states")) {
+			track_states = true;
 		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			print_help(argv[0]);
 			return 0;
@@ -1014,11 +1082,16 @@ int main(int argc, const char * argv[]) {
 		}
 	}
 	if (connected) {
-		indigo_usleep(time_to_wait * ONE_SECOND_DELAY);
+		while (time_to_wait > 0.0) {
+			indigo_usleep(50000); /* 50 ms */
+			if (!poll_wait_flag) break;
+			time_to_wait -= 0.05;
+		}
 	} else {
 		fprintf(stderr, "Connection failed: %s\n", error_message);
 	}
 	indigo_stop();
 	indigo_disconnect_server(server);
+	indigo_detach_client(&client);
 	return 0;
 }
