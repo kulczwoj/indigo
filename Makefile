@@ -39,11 +39,11 @@ BUILD_INCLUDE = $(BUILD_ROOT)/include
 BUILD_SHARE = $(BUILD_ROOT)/share
 
 INSTALL_ROOT = /
-INSTALL_BIN = $(INSTALL_ROOT)/usr/local/bin
-INSTALL_LIB = $(INSTALL_ROOT)/usr/local/lib
-INSTALL_INCLUDE = $(INSTALL_ROOT)/usr/local/include
+INSTALL_BIN = $(INSTALL_ROOT)$(PREFIX)/bin
+INSTALL_LIB = $(INSTALL_ROOT)$(PREFIX)/lib
+INSTALL_INCLUDE = $(INSTALL_ROOT)$(PREFIX)/include
 INSTALL_ETC = $(INSTALL_ROOT)/etc
-INSTALL_SHARE = $(INSTALL_ROOT)/usr/local/share
+INSTALL_SHARE = $(INSTALL_ROOT)$(PREFIX)/share
 INSTALL_RULES = $(INSTALL_ROOT)/lib/udev/rules.d
 INSTALL_FIRMWARE = $(INSTALL_ROOT)/lib/firmware
 
@@ -143,6 +143,25 @@ else
 	endif
 endif
 
+#---------------------------------------------------------------------
+
+# Root install detection
+ifeq ($(realpath /$(INSTALL_ROOT)),/)
+	PREFIX = /usr/local
+	SUDO = sudo
+	CLEAN_INSTALL_DIRS =
+	RELOAD_UDEV = 1
+else
+	PREFIX =
+	SUDO =
+	CLEAN_INSTALL_DIRS = 1
+	RELOAD_UDEV =
+endif
+
+INSTALL_FXLOAD = 1
+
+#---------------------------------------------------------------------
+
 .PHONY: init all clean clean-all
 
 all:	init $(BUILD_LIB)/libindigo.$(SOEXT)
@@ -187,23 +206,27 @@ reconfigure:
 	install -d -m 0755 $(INSTALL_FIRMWARE)
 
 install: reconfigure init all
-	@sudo $(MAKE)	-C indigo_libs install
-	@sudo $(MAKE)	-C indigo_tools install
-	@sudo $(MAKE)	-C indigo_drivers -f ../Makefile.drvs install
+	@$(SUDO) $(MAKE)	-C indigo_libs install
+	@$(SUDO) $(MAKE)	-C indigo_tools install
+	@$(SUDO) $(MAKE)	-C indigo_drivers -f ../Makefile.drvs install
 ifeq ($(OS_DETECTED),Darwin)
-	@sudo $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs install
+	@$(SUDO) $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs install
 endif
 ifeq ($(OS_DETECTED),Linux)
-	@sudo $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs install
+	@$(SUDO) $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs install
 endif
-	@sudo $(MAKE)	-C indigo_server install
+	@$(SUDO) $(MAKE)	-C indigo_server install
 ifeq ($(OS_DETECTED),Linux)
+ifneq ($(RELOAD_UDEV),)
 	sudo udevadm control --reload-rules
+endif
+ifneq ($(INSTALL_FXLOAD),)
 	@$(MAKE)	    -C tools/fxload -f Makefile
-	@sudo install -d /sbin
-	@sudo install -d /usr/sbin
-	@sudo install -m 0755 tools/fxload/fxload /sbin
-	@sudo install -m 0755 tools/fxload/fxload /usr/sbin
+	@$(SUDO) install -d $(INSTALL_ROOT)/sbin
+	@$(SUDO) install -d $(INSTALL_ROOT)/usr/sbin
+	@$(SUDO) install -m 0755 tools/fxload/fxload $(INSTALL_ROOT)/sbin
+	@$(SUDO) install -m 0755 tools/fxload/fxload $(INSTALL_ROOT)/usr/sbin
+endif
 endif
 
 indigo-environment-install:
@@ -213,18 +236,20 @@ indigo-environment-install:
 	systemctl start indigo-environment
 
 uninstall: reconfigure init
-	@sudo $(MAKE)	-C indigo_libs uninstall
-	@sudo $(MAKE)	-C indigo_tools uninstall
-	@sudo $(MAKE)	-C indigo_drivers -f ../Makefile.drvs uninstall
+	@$(SUDO) $(MAKE)	-C indigo_libs uninstall
+	@$(SUDO) $(MAKE)	-C indigo_tools uninstall
+	@$(SUDO) $(MAKE)	-C indigo_drivers -f ../Makefile.drvs uninstall
 ifeq ($(OS_DETECTED),Darwin)
-	@sudo $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs uninstall
+	@$(SUDO) $(MAKE)	-C indigo_mac_drivers -f ../Makefile.drvs uninstall
 endif
 ifeq ($(OS_DETECTED),Linux)
-	@sudo $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs uninstall
+	@$(SUDO) $(MAKE)	-C indigo_linux_drivers -f ../Makefile.drvs uninstall
 endif
-	@sudo $(MAKE)	-C indigo_server uninstall
+	@$(SUDO) $(MAKE)	-C indigo_server uninstall
 ifeq ($(OS_DETECTED),Linux)
+ifneq ($(RELOAD_UDEV),)
 	sudo udevadm control --reload-rules
+endif
 endif
 
 ifeq ($(OS_DETECTED),Linux)
