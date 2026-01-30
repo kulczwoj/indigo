@@ -1754,8 +1754,21 @@ static void server_main() {
 			long len = last - server_argv[0];
 			strncpy(path, server_argv[0], len);
 			path[len] = 0;
-			strcat(path, "/../share/indigo");
-			add_drivers(path);
+			strcat(path, "/indigo_server");
+			char real_path[PATH_MAX];
+			if(NULL == realpath(path, real_path))
+				INDIGO_DEBUG(indigo_debug("realpath(%s, real_path): failed", path));
+			else {
+				char *last2 = strrchr(real_path, '/');
+				if (last2) {
+					char path2[PATH_MAX];
+					long len2 = last2 - real_path;
+					strncpy(path2, real_path, len2);
+					path2[len2] = 0;
+					strcat(path2, "/../share/indigo");
+					add_drivers(path2);
+				}
+			}
 		}
 		add_drivers("/usr/share/indigo");
 		add_drivers("/usr/local/share/indigo");
